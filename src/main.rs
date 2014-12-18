@@ -1,11 +1,25 @@
 #![feature(globs)]
-#![crate_name = "ruisp"]
+#![crate_name = "rusty-lisp"]
+
+use std::io;
 
 mod cons_cell;
 mod parser;
 
-type s = cons_cell::Pair<_>;
 
 fn main() {
-    println!("{}", cons_cell::Pair::NIL)
+    print!("{}", ">");
+    let input = io::stdin()
+                   .read_line()
+                   .ok()
+                   .expect("Couldn't read line"); 
+
+    let mut tokens = parser::tokenize(input);
+    
+    if parser::is_balanced(&tokens) {
+        let sexpr: cons_cell::Pair = parser::build_sexpr(&mut tokens);
+        println!("{}", sexpr);
+    } else { 
+        println!("{}", "Exper unbalenced");
+    }
 }
