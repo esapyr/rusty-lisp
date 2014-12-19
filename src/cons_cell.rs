@@ -5,69 +5,52 @@ use std::rc::Rc;
 use std::fmt;
 
 /// Lisp lists should be able to share structure
-/// Therefore the cdr of the list is a reference counted pointer to an immutable List
-/// The cdr of a list is either a pointer to another list object or nil and must be RC'd 
+///  The cdr of a list is either a pointer to another list object or nil and must be RC'd 
 /// The car of a list is either a pointer to list or an atom and must be RC'd
 ///
-/// Because Pair's are defined recursively we have the have the 'base caseses' if you will
+/// Because Pair's are defined recursively we have the have the 'base caseses'
 /// of the recursion defined in the Pair. (Atom & NIL)
-#[deriving (PartialEq, Show)]
+#[deriving (PartialEq)]
 pub enum Pair {
     Cons(Rc<Pair>, Rc<Pair>),
     Atom(String),
     NIL
 }
 
-//Broken
-/*
 /// Pretty printing
-/// leads to (+ (1... and ((+...
-/// double cons -> SOL
-/// atom nil -> EOL
-/// atom cons -> atom
-///
-/// Cons(Cons(Atom(def), Cons(Atom(r), Cons(Atom(10), NIL))), NIL)
-/// ->(def"r"10), NIL)<-
-/// Cons(def r 10, NIL)
 impl fmt::Show for Pair {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Pair::Cons(ref head, ref tail) =>{
-              match(&**head, &**tail) {
-                  (&Pair::Atom(ref a), &Pair::Cons(ref h, ref t)) => write!(fmt, "{}{}{}", a, h, t),
-                  (&Pair::Atom(ref a), &Pair::NIL) => write!(fmt, "{})", a),
-                  (&Pair::Cons(ref h, ref t), &Pair::NIL) => write!(fmt, "({}{})", h, t),
-                  (&Pair::Cons(ref h, ref t), &Pair::Cons(ref f, ref l)) => write!(fmt, "({}{}{}{}", h, t, f, l),
-                  _ => panic!("{}", "flagrent printing error"),
-              }
+                match(&**head, &**tail) {
+                    (&Pair::Cons(..), &Pair::NIL) => write!(fmt, "({}{})", head, tail),
+                    _                             => write!(fmt, "{}{}", head, tail),
+                }
             }, 
             Pair::Atom(ref a)              => write!(fmt, " \"{}\" ", a),
             Pair::NIL                      => write!(fmt, ""),
         }
     }
 }
-*/
 
 // Primative functions on pairs
-/// Takes a pointer to either a list or an atom and returns that pointer
-pub fn quote(expr: Rc<Pair>) -> Rc<Pair> {
-    expr
-}
-
 /// Checks if something is an atom.
 /// Assumes all atoms are strings.
+///
+/// Allocates a new pair for 't and NIL
+/// Need to figure out static / globals.
 ///
 /// #Arguments
 /// Reference to a Pair.
 /// (This means you have to &*pointer when passing.)
 ///
 /// #Returns
-/// true for anything that's not a pair
-pub fn atom(x: &Rc<Pair>) -> bool {
+/// Rc(Pair::Atom("t")) if x is an atom
+/// Rc(Pair::NIL) if x is a cons cell
+pub fn atom(x: &Rc<Pair>) -> Rc<Pair> {
     match **x {
-        Pair::Cons(..) => false,
-        Pair::Atom(..) => true,
-        Pair::NIL      => true,
+        Pair::Cons(..)             => Rc::new( Pair::NIL ),
+        Pair::Atom(..) | Pair::NIL => Rc::new( Pair::Atom( "t".to_string() )),
     }
 }
 
@@ -80,52 +63,50 @@ pub fn atom(x: &Rc<Pair>) -> bool {
 ///
 /// #Returns
 /// true if x and y are atoms or NILL and are equal.
-pub fn eq(x: &Rc<Pair>, y: &Rc<Pair>) -> bool {
-    **x == **y
+pub fn eq(x: &Rc<Pair>, y: &Rc<Pair>) -> Rc<Pair> {
+    if **x == **y {
+        Rc::new( Pair::Atom( "t".to_string() ))
+    } else {
+        Rc::new( Pair::NIL )
+    }
 }
 
 /// Returns the head of the Pair
-/// To share structure, clones the pointer, not what it points to.
+/// Because cons() clones anything it's passed theres no need
+/// to clone the pointer just because you want to borrow it.
 ///
 /// #Arguments
 /// The pair you want the head of.
 ///
 /// #Returns
-/// A clone of the head of the Pair.
+/// A reference to of the head of the Pair.
 /// panics! if expr is an atom.
-pub fn first(expr: &Rc<Pair>) -> Rc<Pair> {
+pub fn car(expr: &Rc<Pair>) -> &Rc<Pair> {
     match **expr {
-        Pair::Cons(ref head, ref tail) => head.clone(),
-        _                              => panic!("Cannot get first of an atom"),
+        Pair::Cons(ref head, ref tail) => head,
+        _                              => panic!("Cannot get car of an atom"),
     }
 }
 
 /// Returns the tail of the Pair
-/// To share structure, clones the pointer, not what it points to.
 ///
 /// #Arguments
 /// The pair you want the tail of.
 ///
 /// #Returns
-/// A clone of the tail of the Pair
+/// A reference to the tail of the pair.
 /// panics! if expr is an atom.
-pub fn rest(expr: &Rc<Pair>) -> Rc<Pair> {
+pub fn cdr(expr: &Rc<Pair>) -> &Rc<Pair> {
     match **expr {
-        Pair::Cons(ref head, ref tail) => tail.clone(),
-        _                              => panic!("Cannot get rest of an atom"),
+        Pair::Cons(ref head, ref tail) => tail,
+        _                              => panic!("Cannot get cdr of an atom"),
     }
 }
 
-/// y must be list
-/// (cons 1 nil) -> (1)
-/// (cons 1 '(3 2)) -> (1 3 2)
-/// (cons '(1) nil) -> ((1))
-/// (cons '(1) '(3 2)) -> ((1) 3 2)
-/// structural sharing is only for tail.
+/// Returns a new pair made up of x and y.
+///
+/// This is the only cons cell function that adds to the 
+/// reference count of a Rc.
 pub fn cons(x: &Rc<Pair>, y: &Rc<Pair>) -> Pair {
-    Pair::Cons( x.clone(), y.clone() )
+    Rc::new(Pair::Cons( x.clone(), y.clone() ))
 }
-
-//requires eval
-//pub fn cond() 
-

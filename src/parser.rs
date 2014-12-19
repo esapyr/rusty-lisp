@@ -1,7 +1,7 @@
 #![feature(globs)]
 
 use cons_cell::Pair;
-use cons_cell;
+use cons_cell::*;
 use std::rc::Rc;
 
 pub fn tokenize(raw_input: String) -> Vec<String> {
