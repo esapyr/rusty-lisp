@@ -1,6 +1,5 @@
 #![feature(globs)]
 
-use cons_cell::Pair;
 use cons_cell::*;
 use std::rc::Rc;
 
@@ -15,6 +14,15 @@ pub fn tokenize(raw_input: String) -> Vec<String> {
              .collect::<Vec<String>>()
 }
 
+/// Checks if a vector of tokens is balanced. That is that for every
+/// left-paren ("(") a right-paren (")") follows at some point.
+/// 
+/// #Arguments
+/// The tokens you want to check are balanced.
+///
+/// #Returns
+/// true if balanced
+/// false if not balanced
 pub fn is_balanced(tokens: &Vec<String>) -> bool {
     let mut count = 0i;
 
@@ -31,19 +39,19 @@ pub fn is_balanced(tokens: &Vec<String>) -> bool {
 
 /// Creates the initial s-expression from an iterator over the token list.
 ///
-/// # Arguments
-/// A consuming (MoveItems) iterator over the vector of tokens.
-///
-/// This was done so that we could own the "tokens" when iterating
-/// in order to turn each String into an Atom(String).
-/// 
-/// (+ 1 (+ 1 1) 1) =>
-/// (+ (1 ((+ (1 (1 ))) (1 ))))
-///
 /// #Todo
 /// Rust supports sibiling call optimization but not TCO.
 /// Implement this a sibling call (mutually) recursive?
-pub fn build_sexpr(tokens: &mut Vec<String>) -> Pair {
+///
+/// #Arguments
+/// A mutable reference to the vector of tokens.
+/// We need a mutable reference to allows us to not take ownership of the tokens
+/// (to make recursion easier) and so that the list will eventually exhaust.
+/// There is probably a better way to do this, and I may look into it later.
+///
+/// #Returns
+/// A pointer to the the newly generated s-expression (Pair).
+pub fn build_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
     if !tokens.is_empty() {
         let token: String = tokens.remove(0).expect("here"); 
     
@@ -53,25 +61,14 @@ pub fn build_sexpr(tokens: &mut Vec<String>) -> Pair {
                             //This only works because tokens is mutable, and form_sexpr is blocking. 
                             //So the head (depending on the list) will exhaust a lot of tokens before
                             //moving on to the tail.
-                            let head: Rc<Pair> = Rc::new( build_sexpr(tokens) );
-                            let tail: Rc<Pair> = Rc::new( build_sexpr(tokens) );
-                            Pair::Cons(head, tail)
+                            let head: Rc<Pair> = build_sexpr(tokens);
+                            let tail: Rc<Pair> = build_sexpr(tokens);
+                            cons(head, tail)
                         },
-            ")"      => Pair::NIL,
-            _        => Pair::Cons( Rc::new(Pair::Atom(token)), Rc::new( build_sexpr(tokens) )),
+            ")"      => Rc::new(Pair::Atom( "NIL".to_string() )),
+            _        => cons( Rc::new(Pair::Atom(token)), build_sexpr(tokens) ),
         }
     } else {
-        return Pair::NIL
+        return Rc::new( Pair::Atom( "NIL".to_string() ) )
     }
 }
-
-/*
-pub fn build_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
-    if tokens.len() == 1 { return Rc::new( Pair::Atom( tokens.pop().expect("") )) }
-
-    match form_sexpr( tokens ) {
-        Pair::Cons(ref head, ref tail) => head.clone(),
-        _                              => panic!("build sexpr failed"),
-    }
-}
-*/

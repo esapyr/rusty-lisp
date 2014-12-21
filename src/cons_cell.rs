@@ -4,31 +4,47 @@
 use std::rc::Rc;
 use std::fmt;
 
-/// Lisp lists should be able to share structure
-///  The cdr of a list is either a pointer to another list object or nil and must be RC'd 
-/// The car of a list is either a pointer to list or an atom and must be RC'd
+/// A naive persistent list implementation that uses reference counted pointers.
+/// Deallocation of a particularly long list made up of 0-referenced pointers
+/// could incur some overhead.
 ///
-/// Because Pair's are defined recursively we have the have the 'base caseses'
-/// of the recursion defined in the Pair. (Atom & NIL)
+/// #McCarthy's lists
+/// Intended to closely resemble McCarthy's orginal list structure where
+/// the head of the list was called the address field (which ends up essentially
+/// being a pointer), and the tail was called the decrement (which was a pointer
+/// to another list structure).
+///
+/// In McCarthy's lisp, an atom was also a list where a special constant was
+/// stored in the first address field. This allowed there to be metadata 
+/// about the symbol (such as how to print it). Due to programmer
+/// convience and preformance restrictions Atoms are normal rust Strings.
+///
+/// In addition to that NIL, while called an Atom, was actually the value
+/// zero.
+///
+/// #Implementation
+/// A Pair is an Enum containing two reference counted pointers.
+/// Both of which could either point to another Pair or to the
+/// Atom NIL.
+///
 #[deriving (PartialEq)]
 pub enum Pair {
     Cons(Rc<Pair>, Rc<Pair>),
     Atom(String),
-    NIL
 }
-
 /// Pretty printing
 impl fmt::Show for Pair {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Pair::Cons(ref head, ref tail) =>{
                 match(&**head, &**tail) {
-                    (&Pair::Cons(..), &Pair::NIL) => write!(fmt, "({}{})", head, tail),
-                    _                             => write!(fmt, "{}{}", head, tail),
+                    (&Pair::Cons(..), &Pair::Cons(..))                             => write!(fmt, "({}){}", head, tail),
+                    (&Pair::Cons(..), &Pair::Atom(ref a)) if a.as_slice() == "NIL" => write!(fmt, "({}{})", head, tail),
+                    _                                                              => write!(fmt, "{}{}", head, tail),
                 }
             }, 
-            Pair::Atom(ref a)              => write!(fmt, " \"{}\" ", a),
-            Pair::NIL                      => write!(fmt, ""),
+            Pair::Atom(ref a) if a.as_slice() == "NIL" => write!(fmt, "{}", ""),
+            Pair::Atom(ref a)                          => write!(fmt, " \"{}\" ", a),
         }
     }
 }
@@ -38,52 +54,60 @@ impl fmt::Show for Pair {
 /// Assumes all atoms are strings.
 ///
 /// Allocates a new pair for 't and NIL
-/// Need to figure out static / globals.
 ///
 /// #Arguments
 /// Reference to a Pair.
 /// (This means you have to &*pointer when passing.)
 ///
 /// #Returns
-/// Rc(Pair::Atom("t")) if x is an atom
-/// Rc(Pair::NIL) if x is a cons cell
-pub fn atom(x: &Rc<Pair>) -> Rc<Pair> {
-    match **x {
-        Pair::Cons(..)             => Rc::new( Pair::NIL ),
-        Pair::Atom(..) | Pair::NIL => Rc::new( Pair::Atom( "t".to_string() )),
+/// The atom T if x is an atom
+/// the atom NIL if x is a Pair
+pub fn atom(x: Rc<Pair>) -> Rc<Pair> {
+    match *x {
+        Pair::Cons(..) => Rc::new( Pair::Atom( "NIL".to_string() )),
+        Pair::Atom(..) => Rc::new( Pair::Atom( "T".to_string() )),
     }
 }
 
 /// Checks if two symbols are equal
-/// (have to check in eval if x and y are of the same type)
+/// x and y being different types is undefined behavior in the original
+/// paper, and here the type checker will panic.
 ///
 /// #Arguments
-/// Two references to either two pairs or two strings.
-/// (This means you have to &*pointer when passing)
+/// Two pointers to either two Pairs or two Atoms
 ///
 /// #Returns
-/// true if x and y are atoms or NILL and are equal.
-pub fn eq(x: &Rc<Pair>, y: &Rc<Pair>) -> Rc<Pair> {
-    if **x == **y {
+/// The Atom T if x and y are atoms and equal (including NIL)
+/// The Atom NIL if x and y are atoms and not equal or are collections.
+pub fn eq(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
+    if *x == *y {
         Rc::new( Pair::Atom( "t".to_string() ))
     } else {
-        Rc::new( Pair::NIL )
+        Rc::new( Pair::Atom( "NIL".to_string() ))
     }
 }
 
 /// Returns the head of the Pair
-/// Because cons() clones anything it's passed theres no need
-/// to clone the pointer just because you want to borrow it.
+///
+/// In the original implementation this just moved the address cell into
+/// the IBM 704's accumlator register.
+///
+/// I was conflicted about how to implement this. In the original
+/// this function essentially returned a pointer, but in rust returning
+/// pointers is an anti-pattern. I went with returning a clone of the
+/// head pointer because of the use of reference counted pointers.
 ///
 /// #Arguments
-/// The pair you want the head of.
+/// The Pair whose head you want.
 ///
 /// #Returns
-/// A reference to of the head of the Pair.
-/// panics! if expr is an atom.
-pub fn car(expr: &Rc<Pair>) -> &Rc<Pair> {
-    match **expr {
-        Pair::Cons(ref head, ref tail) => head,
+/// A clone of the pointer in the head. Because car and cdr are 
+/// non-destructive we have to share the pointer with the caller.
+///
+/// Panics! if expr is an atom.
+pub fn car(expr: Rc<Pair>) -> Rc<Pair> {
+    match *expr {
+        Pair::Cons(ref head, _) => head.clone(),
         _                              => panic!("Cannot get car of an atom"),
     }
 }
@@ -91,22 +115,36 @@ pub fn car(expr: &Rc<Pair>) -> &Rc<Pair> {
 /// Returns the tail of the Pair
 ///
 /// #Arguments
-/// The pair you want the tail of.
+/// The pair whose tail you want.
 ///
 /// #Returns
-/// A reference to the tail of the pair.
+/// A clone of the pointer in the tail.
 /// panics! if expr is an atom.
-pub fn cdr(expr: &Rc<Pair>) -> &Rc<Pair> {
-    match **expr {
-        Pair::Cons(ref head, ref tail) => tail,
+pub fn cdr(expr: Rc<Pair>) -> Rc<Pair> {
+    match *expr {
+        Pair::Cons(_, ref tail) => tail.clone(),
         _                              => panic!("Cannot get cdr of an atom"),
     }
 }
 
 /// Returns a new pair made up of x and y.
 ///
-/// This is the only cons cell function that adds to the 
-/// reference count of a Rc.
-pub fn cons(x: &Rc<Pair>, y: &Rc<Pair>) -> Pair {
-    Rc::new(Pair::Cons( x.clone(), y.clone() ))
+/// In McCarthy's lisp this took a register off of the free-storage list
+/// (part of the garbage collection system) and placed the values of x 
+/// and y in the address and decrement of the new register respectively.
+///
+/// In this implementation cons takes two pointers to pairs
+/// and places them in the head and tail of new pair and then allocates that 
+/// with Rc::new.
+///
+/// #Arguments
+/// Two Pair pointers that will be made into the head and tail of a new Pair
+/// respectively. Assumes you're passing cloned pointers i.e because cons now
+/// owns x and y it should be free to wrap them in a Pair and allocate that 
+/// without needing to clone.
+///
+/// #Returns
+/// A pointer to a newly allocated Pair. (only list function that allocates)
+pub fn cons(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
+    Rc::new( Pair::Cons( x, y ) )
 }

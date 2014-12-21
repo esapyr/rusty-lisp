@@ -19,130 +19,160 @@ fn main() {
     let mut tokens = parser::tokenize(input);
     
     if parser::is_balanced(&tokens) {
-        let sexpr: Pair = parser::build_sexpr(&mut tokens);
-        println!("{}", sexpr);
+        let sexpr: Rc<Pair> = parser::build_sexpr(&mut tokens);
+        println!("{}", *sexpr);
     } else { 
         println!("{}", "Expression unbalenced");
     }
 }
 
-fn eval(expr: &Rc<Pair>, env: &Rc<Pair>) -> &Rc<Pair> {
-    match expr {
-        Pair::Atom(ref a) => assoc(expr, env),
-        Pair::Cons(ref head, ref tail) => {
-            match head {
-                //(quote .. (car ...
-                Pair::Atom(ref a) => {
-                    match a.as_slice() {
-                        "quote" => cadr(&expr),
-                        "atom"  => atom(eval(cadr(&expr), &env)),
-                        "eq"    => eq(  eval(cadr(&expr), &env), eval(caddr(&expr), &env)),
-                        "car"   => car( eval(cadr(&expr), &env)),
-                        "cdr"   => cdr( eval(cadr(&expr), &env)),
-                        "cons"  => cons(eval(cadr(&expr), &env), eval(caddr(&expr), &env)),
-                        "cond"  => evcon(cdr(&expr), &env),
-                        _       => eval(cons(assoc(car(&expr), &env), cdr(&expr)), &env),
-                    }
-                },
-                //((lambda... and ((label
-                Pair::Cons(ref h, ref t) => {
-                    match h {
-                        Pair::Atom(ref a) => {
-                            match a.as_slice() {
-                                "label"   => eval(cons(caddar(&expr), cdr(&expr)), 
-                                                  cons(list(cadar(&expr), car(&expr)), &env)), 
+fn apply(f: Rc<Pair>, args: Rc<Pair>) -> Rc<Pair> {
+    eval(cons(f.clone(), appq(args.clone())), Rc::new(Pair::Atom("NIL".to_string())))
+}
 
-                                "lambda"  => eval(caddar(&expr), 
-                                                  append(pair(cadar(&expr), 
-                                                              evlis(cdr(&expr), &env)), &env)),
-                                _         => panic!("Undefined function {}", a)
-                            }
-                        },
-                        _ => panic!("Undefined function {}", h),
-                    }
-                },
-                Pair::NIL => panic!("Undefined function NIL"),
-            }
+/// Puts the atom "QUOTE" in front of every argument so eval will regard them
+/// as standing for themselves
+fn appq(m: Rc<Pair>) -> Rc<Pair>{
+    if null(m.clone()) {
+        Rc::new(Pair::Atom("NIL".to_string()))
+    } else {
+        cons(list2(Rc::new(Pair::Atom("QUOTE".to_string())), car(m.clone())),
+             appq(cdr(m.clone())))
+    }
+
+}
+
+fn eval(e: Rc<Pair>, a: Rc<Pair>) -> Rc<Pair> {
+    if to_bool(atom(e.clone())) { 
+        assoc(e.clone(), a.clone()) 
+    } else if to_bool(atom(car(e.clone()))) {
+        if to_bool(eq(car(e.clone()),      Rc::new(Pair::Atom("QUOTE".to_string())))) { 
+            cadr(e.clone()) 
+        }
+        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("ATOM".to_string())))) {
+            atom(eval(cadr(e.clone()), a.clone()))
+        }
+        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("EQ".to_string())))) {
+            eq(eval(cadr(e.clone()), a.clone()), eval(caddr(e.clone()), a.clone()))
+        }
+        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("COND".to_string())))) {
+            evcon(cdr(e.clone()), a.clone())
+        }
+        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("CAR".to_string())))) {
+            car(eval(cadr(e.clone()), a.clone()))
+        }
+        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("CDR".to_string())))) {
+            cdr(eval(cadr(e.clone()), a.clone()))
+        }
+        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("CONS".to_string())))) {
+            cons(eval(cadr(e.clone()), a.clone()), eval(caddr(e.clone()), a.clone()))
+        }
+        else {
+            eval(cons(assoc(car(e.clone()), a.clone()),
+                      evlis(cdr(e.clone()), a.clone())),
+                 a.clone())
+        }
+    } 
+    else if to_bool(eq(caar(e.clone()), Rc::new(Pair::Atom("LABEL".to_string())))){
+        eval(cons(caddar(e.clone()), cdr(e.clone())),
+             cons(list2(cadar(e.clone()), car(e.clone())), a.clone()))
+    } 
+    else if to_bool(eq(caar(e.clone()), Rc::new(Pair::Atom("LAMBDA".to_string())))) {
+        eval(caddar(e.clone()), append(pair(cadar(e.clone()), cdr(e.clone())), a.clone()))
+    } else {
+        panic!("Eval failed")
+    }
+}
+
+fn evcon(c: Rc<Pair>, a: Rc<Pair>) -> Rc<Pair> {
+    if to_bool(eval(caar(c.clone()), a.clone())) {
+        eval(cadar(c.clone()), a.clone())
+    } else {
+        evcon(cdr(c.clone()), a.clone())
+    }
+}
+
+fn evlis(m: Rc<Pair>, a: Rc<Pair>) -> Rc<Pair> {
+    if null(m.clone()) {
+        m //just have to return nil
+    } else {
+        cons(eval(car(m.clone()), a.clone()), evlis(cdr(m.clone()), a.clone()))
+    }
+}
+
+fn pair(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
+    if null(x.clone()) && null(y.clone()) {
+        x //just have to return nil
+    } else if to_bool(atom(x.clone())) && to_bool(atom(y.clone())) {
+       cons(list2(car(x.clone()), car(y.clone())),
+            pair(cdr(x.clone()), cdr(y.clone())))
+    } else {
+        panic!("fn pair failed")
+    }
+}
+
+fn append(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
+    if null(y.clone()) {
+        y //just have to return nul
+    } else {
+        cons(car(x.clone()), append(cdr(x.clone()), y.clone()))
+    }
+}
+
+fn assoc(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
+    if to_bool(eq(caar(y.clone()), x.clone())) {
+        caddar(y.clone())
+    } else {
+        assoc(x.clone(), cdr(y.clone()))
+    }
+}
+
+fn list2(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
+    cons(x.clone(), 
+         cons(y.clone(), 
+              Rc::new(Pair::Atom("NIL".to_string()))))
+}
+
+fn list3(x: Rc<Pair>, y: Rc<Pair>, z: Rc<Pair>) -> Rc<Pair> {
+    cons( x.clone(), 
+          cons( y.clone(), 
+                cons( z.clone(), 
+                      Rc::new(Pair::Atom("NIL".to_string())))))
+}
+
+fn null(e: Rc<Pair>) -> bool {
+    match *e {
+        Pair::Atom(ref a) if a.as_slice() == "NIL" => true,
+        _                                          => false,
+    }
+}
+
+/// Helper fuction to unrap t and nil
+fn to_bool(e: Rc<Pair>) -> bool {
+    match *e {
+        Pair::Atom(ref a) => {
+            if a.as_slice() == "t" { true } else { false }
         },
-        Pair::NIL => Rc::new(Pair::NIL),
+        _ => false,
     }
 }
 
-fn evcon(expr: &Rc<Pair>, env: &Rc<Pair>) -> &Rc<Pair> {
-    let pred: &Rc<Pair> = eval(caar(&expr), &env);
-
-    if pred == Rc::new(Pair::Atom("t".to_string())) {
-        eval(cadar(&expr), &env)
-    } else {
-        evcon(cdr(&expr), &env)
-    }
+fn cadr(e: Rc<Pair>) -> Rc<Pair> {
+    car(cdr(e.clone()))
 }
 
-fn evlis(expr: &Rc<Pair>, env: &Rc<Pair>) -> &Rc<Pair> {
-    if null(expr) { 
-        Rc::new(Pair::NIL) 
-    } else {
-        cons(eval(car(&expr), &env), evlis(cdr(&expr), &env))
-    }
+fn caddr(e: Rc<Pair>) -> Rc<Pair> {
+    car(cdr(cdr(e.clone())))
 }
 
-pub fn caar(expr: &Rc<Pair>) -> &Rc<Pair> {
-    car(car(expr))
+fn caar(e: Rc<Pair>) -> Rc<Pair> {
+    car(car(e.clone()))
 }
 
-pub fn caddar(expr: &Rc<Pair>) -> &Rc<Pair> {
-    //(car (cdr (cdr (car
-    car(cdr(cdr(car(expr))))
+fn caddar(e: Rc<Pair>) -> Rc<Pair> {
+    car(cdr(cdr(car(e.clone()))))
 }
 
-//second (car (cdr ))
-pub fn cadr(expr: &Rc<Pair>) -> &Rc<Pair> {
-    car(cdr(expr))    
-}
-
-pub fn cadar(exper: &Rc<Pair>) -> &Rc<Pair> {
-    car(cdr(car(exper)))
-}
-
-pub fn caddr(expr: &Rc<Pair>) -> &Rc<Pair> {
-    car(cdr(cdr(expr)))
-}
-
-pub fn cdar(expr: &Rc<Pair>) -> &Rc<Pair> {
-    cdr(car(expr))
-}
-
-pub fn null(expr: &Rc<Pair>) -> bool {
-    match expr {
-        Pair::NIL => Rc::new(Pair::Atom("t".to_string())),
-        _         => Rc::new(Pair::NIL),
-    }
-}
-
-// has to be a macro?
-// should be multivardic 
-pub fn list(x: &Rc<Pair>, y: &Rc<Pair>) -> &Rc<Pair> {
-    cons(x, cons(y, Pair::NIL))
-}
-
-//(append '(a b) '(c d)) -> '(a b c d)
-pub fn append(x: &Rc<Pair>, y: &Rc<Pair>) -> &Rc<Pair> {
-    if !null(x) {
-        y
-    } else {
-        cons(car(x), append(cdr(x), y))
-    }
-}
-
-//creates env: ((k v) (k v) (k v))
-pub fn pair(x: &Rc<Pair>, y: &Rc<Pair>) -> &Rc<Pair> {
-    if null(x) && null(y) { Rc::new(Pair::NIL) }
-    else if !atom(x) && !atom(y){
-        cons(list(car(x), car(y)), pair(cdr(x), cdr(y)))
-    }
-}
-
-//finds k in env and returns v
-pub fn assoc(x: &Rc<Pair>, y: &Rc<Pair>) -> &Rc<Pair> {
-    if caar(y) == x { cadar(y) } else { assoc(x, cdr(y)) }
+fn cadar(e: Rc<Pair>) -> Rc<Pair> {
+    car(cdr(car(e.clone())))
 }
