@@ -1,5 +1,3 @@
-#![feature(globs)]
-
 use cons_cell::*;
 use std::rc::Rc;
 
@@ -8,7 +6,8 @@ pub fn tokenize(raw_input: String) -> Vec<String> {
              .replace("(","( ")
              .replace(")", " )") //should find better way
              .replace("(  )","()")
-             .replace("'","' ")
+             .replace("'", "QUOTE ") //definitely need a better way
+             .chars().map(|c| c.to_uppercase()).collect::<String>()
              .split(' ')
              .map(|s| s.to_string()) //have to re-allocate the charsplits b/c replace() currently own
              .collect::<Vec<String>>()
@@ -37,6 +36,11 @@ pub fn is_balanced(tokens: &Vec<String>) -> bool {
     count == 0
 }
 
+/*
+pub fn surround_quote(mut tokens: Vec<String>) -> Vec<String> {
+}
+*/
+
 /// Creates the initial s-expression from an iterator over the token list.
 ///
 /// #Todo
@@ -51,7 +55,7 @@ pub fn is_balanced(tokens: &Vec<String>) -> bool {
 ///
 /// #Returns
 /// A pointer to the the newly generated s-expression (Pair).
-pub fn build_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
+fn form_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
     if !tokens.is_empty() {
         let token: String = tokens.remove(0).expect("here"); 
     
@@ -70,5 +74,16 @@ pub fn build_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
         }
     } else {
         return Rc::new( Pair::Atom( "NIL".to_string() ) )
+    }
+}
+
+pub fn build_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
+    //quote
+    if tokens.len() == 2 && tokens[0].as_slice() == "QUOTE" {
+        tokens.insert(0, "(".to_string());
+        tokens.push(")".to_string());
+        form_sexpr(tokens)
+    } else {
+        form_sexpr(tokens)
     }
 }

@@ -1,6 +1,3 @@
-#![crate_type = "lib"]
-#![crate_name = "ConsCell"]
-
 use std::rc::Rc;
 use std::fmt;
 
@@ -27,26 +24,10 @@ use std::fmt;
 /// Both of which could either point to another Pair or to the
 /// Atom NIL.
 ///
-#[deriving (PartialEq)]
+#[deriving (PartialEq, Show)]
 pub enum Pair {
     Cons(Rc<Pair>, Rc<Pair>),
     Atom(String),
-}
-/// Pretty printing
-impl fmt::Show for Pair {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Pair::Cons(ref head, ref tail) =>{
-                match(&**head, &**tail) {
-                    (&Pair::Cons(..), &Pair::Cons(..))                             => write!(fmt, "({}){}", head, tail),
-                    (&Pair::Cons(..), &Pair::Atom(ref a)) if a.as_slice() == "NIL" => write!(fmt, "({}{})", head, tail),
-                    _                                                              => write!(fmt, "{}{}", head, tail),
-                }
-            }, 
-            Pair::Atom(ref a) if a.as_slice() == "NIL" => write!(fmt, "{}", ""),
-            Pair::Atom(ref a)                          => write!(fmt, " \"{}\" ", a),
-        }
-    }
 }
 
 // Primative functions on pairs
@@ -108,7 +89,8 @@ pub fn eq(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
 pub fn car(expr: Rc<Pair>) -> Rc<Pair> {
     match *expr {
         Pair::Cons(ref head, _) => head.clone(),
-        _                              => panic!("Cannot get car of an atom"),
+        Pair::Atom(ref a) if a.as_slice() != "NIL"      => panic!("Cannot get car of an Atom"),
+        Pair::Atom(..)                                  => panic!("Cannot get car of an NIL"),
     }
 }
 
@@ -123,7 +105,8 @@ pub fn car(expr: Rc<Pair>) -> Rc<Pair> {
 pub fn cdr(expr: Rc<Pair>) -> Rc<Pair> {
     match *expr {
         Pair::Cons(_, ref tail) => tail.clone(),
-        _                              => panic!("Cannot get cdr of an atom"),
+        Pair::Atom(ref a) if a.as_slice() != "NIL" => panic!("Cannot get car of an Atom"),
+        Pair::Atom(..)                             => panic!("Cannot get car of an NIL"),
     }
 }
 
