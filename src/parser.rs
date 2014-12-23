@@ -36,11 +36,6 @@ pub fn is_balanced(tokens: &Vec<String>) -> bool {
     count == 0
 }
 
-/*
-pub fn surround_quote(mut tokens: Vec<String>) -> Vec<String> {
-}
-*/
-
 /// Creates the initial s-expression from an iterator over the token list.
 ///
 /// #Todo
@@ -55,13 +50,12 @@ pub fn surround_quote(mut tokens: Vec<String>) -> Vec<String> {
 ///
 /// #Returns
 /// A pointer to the the newly generated s-expression (Pair).
-fn form_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
+pub fn build_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
     if !tokens.is_empty() {
-        let token: String = tokens.remove(0).expect("here"); 
+        let token: String = tokens.remove(0).expect("Failed getting next token in parser"); 
     
         match token.as_slice() {
-            "("      =>
-                        {  
+            "("      => {  
                             //This only works because tokens is mutable, and form_sexpr is blocking. 
                             //So the head (depending on the list) will exhaust a lot of tokens before
                             //moving on to the tail.
@@ -69,21 +63,21 @@ fn form_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
                             let tail: Rc<Pair> = build_sexpr(tokens);
                             cons(head, tail)
                         },
-            ")"      => Rc::new(Pair::Atom( "NIL".to_string() )),
-            _        => cons( Rc::new(Pair::Atom(token)), build_sexpr(tokens) ),
+            "QUOTE"  => {
+                            if (&tokens[0]).as_slice() == "(" || (&tokens[0]).as_slice() == "QUOTE" {
+                                cons(cons(make_atom(token), cons(car(build_sexpr(tokens)), make_atom("NIL"))), build_sexpr(tokens))
+                            } else {
+                                cons(cons(make_atom(token), cons(make_atom(tokens.remove(0).expect("")), make_atom("NIL"))), build_sexpr(tokens))
+                            }
+                        },
+            ")"      => make_atom("NIL"),
+            _        => cons(make_atom(token), build_sexpr(tokens)),
         }
     } else {
-        return Rc::new( Pair::Atom( "NIL".to_string() ) )
+        return make_atom("NIL")
     }
 }
 
-pub fn build_sexpr(tokens: &mut Vec<String>) -> Rc<Pair> {
-    //quote
-    if tokens.len() == 2 && tokens[0].as_slice() == "QUOTE" {
-        tokens.insert(0, "(".to_string());
-        tokens.push(")".to_string());
-        form_sexpr(tokens)
-    } else {
-        form_sexpr(tokens)
-    }
+pub fn make_atom<T: ToString>(token: T) -> Rc<Pair> {
+    Rc::new(Pair::Atom(token.to_string()))
 }

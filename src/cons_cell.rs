@@ -89,8 +89,8 @@ pub fn eq(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
 pub fn car(expr: Rc<Pair>) -> Rc<Pair> {
     match *expr {
         Pair::Cons(ref head, _) => head.clone(),
-        Pair::Atom(ref a) if a.as_slice() != "NIL"      => panic!("Cannot get car of an Atom"),
-        Pair::Atom(..)                                  => panic!("Cannot get car of an NIL"),
+        Pair::Atom(ref a) if a.as_slice() == "NIL"      => Rc::new(Pair::Atom("NIL".to_string())),
+        Pair::Atom(..)                                  => panic!("Cannot get car of an Atom"),
     }
 }
 
@@ -105,8 +105,8 @@ pub fn car(expr: Rc<Pair>) -> Rc<Pair> {
 pub fn cdr(expr: Rc<Pair>) -> Rc<Pair> {
     match *expr {
         Pair::Cons(_, ref tail) => tail.clone(),
-        Pair::Atom(ref a) if a.as_slice() != "NIL" => panic!("Cannot get car of an Atom"),
-        Pair::Atom(..)                             => panic!("Cannot get car of an NIL"),
+        Pair::Atom(ref a) if a.as_slice() == "NIL" => Rc::new(Pair::Atom("NIL".to_string())),
+        Pair::Atom(..)                             => panic!("Cannot get car of an Atom"),
     }
 }
 

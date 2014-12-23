@@ -4,19 +4,22 @@
 use std::io;
 use std::rc::Rc;
 use cons_cell::{Pair, atom, eq, car, cdr, cons};
-use parser::{tokenize, build_sexpr, is_balanced};
+use parser::{tokenize, build_sexpr, is_balanced, make_atom};
 
 mod cons_cell;
 mod parser;
 
 //read-eval-print
 fn main() {
+    let mut t = tokenize("((nil nil) (t t))".to_string());
+    let std_env = car(build_sexpr(&mut t));
+
     loop {
         let mut tokens = tokenize(read());
         
         if is_balanced(&tokens) {
             let sexpr: Rc<Pair> = car(build_sexpr(&mut tokens));
-            let value: Rc<Pair> = eval(sexpr, Rc::new(Pair::Atom("NIL".to_string())));
+            let value: Rc<Pair> = eval(sexpr, std_env.clone());
             print_sexpr(value);
             println!("");
         } else { 
@@ -36,7 +39,7 @@ fn read() -> String {
 fn print_sexpr(sexpr: Rc<Pair>) {
     let mut pair: Rc<Pair> = sexpr; 
 
-    if !to_bool(atom(pair.clone())) {
+    if !to_bool(atom(pair.clone())) && !sexpr_is_dotted_pair(pair.clone()) {
         print!("(");
     }
     loop {
@@ -66,6 +69,7 @@ fn print_sexpr(sexpr: Rc<Pair>) {
                     },
                     (&Pair::Cons(..), &Pair::Cons(..)) => {
                         print_sexpr(h.clone());
+                        print!(" ");
                         pair = t.clone();
                     },
                 }
@@ -94,25 +98,25 @@ fn eval(e: Rc<Pair>, a: Rc<Pair>) -> Rc<Pair> {
     if to_bool(atom(e.clone())) { 
         assoc(e.clone(), a.clone()) 
     } else if to_bool(atom(car(e.clone()))) {
-        if to_bool(eq(car(e.clone()),      Rc::new(Pair::Atom("QUOTE".to_string())))) { 
+        if to_bool(eq( car(e.clone()), make_atom("QUOTE") )) { 
             cadr(e.clone()) 
         }
-        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("ATOM".to_string())))) {
+        else if to_bool(eq( car(e.clone()), make_atom("ATOM") )) { 
             atom(eval(cadr(e.clone()), a.clone()))
         }
-        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("EQ".to_string())))) {
+        else if to_bool(eq( car(e.clone()), make_atom("EQ") )) {
             eq(eval(cadr(e.clone()), a.clone()), eval(caddr(e.clone()), a.clone()))
         }
-        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("COND".to_string())))) {
+        else if to_bool(eq( car(e.clone()), make_atom("COND") )) {
             evcon(cdr(e.clone()), a.clone())
         }
-        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("CAR".to_string())))) {
+        else if to_bool(eq( car(e.clone()), make_atom("CAR") )) {
             car(eval(cadr(e.clone()), a.clone()))
         }
-        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("CDR".to_string())))) {
+        else if to_bool(eq( car(e.clone()), make_atom("CDR") )) {
             cdr(eval(cadr(e.clone()), a.clone()))
         }
-        else if to_bool(eq(car(e.clone()), Rc::new(Pair::Atom("CONS".to_string())))) {
+        else if to_bool(eq( car(e.clone()), make_atom("CONS") )) {
             cons(eval(cadr(e.clone()), a.clone()), eval(caddr(e.clone()), a.clone()))
         }
         else {
@@ -121,15 +125,16 @@ fn eval(e: Rc<Pair>, a: Rc<Pair>) -> Rc<Pair> {
                  a.clone())
         }
     } 
-    else if to_bool(eq(caar(e.clone()), Rc::new(Pair::Atom("LABEL".to_string())))){
+    else if to_bool(eq( caar(e.clone()), make_atom("LABEL") )){
         eval(cons(caddar(e.clone()), cdr(e.clone())),
              cons(list(cadar(e.clone()), car(e.clone())), a.clone()))
     } 
-    else if to_bool(eq(caar(e.clone()), Rc::new(Pair::Atom("LAMBDA".to_string())))) {
-        eval(caddar(e.clone()), append(pair(cadar(e.clone()), cdr(e.clone())), a.clone()))
+    else if to_bool(eq( caar(e.clone()), make_atom("LAMBDA") )) {
+        eval( caddar(e.clone()), 
+              append(pair(cadar(e.clone()), cdr(e.clone())), a.clone()))
     } else {
-        println!("{}", "fuck eval");
-        Rc::new(Pair::Atom("NIL".to_string()))
+        println!("{}", "eval failed");
+        make_atom("NIL")
     }
 }
 
@@ -152,16 +157,16 @@ fn evlis(m: Rc<Pair>, a: Rc<Pair>) -> Rc<Pair> {
 fn pair(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
     if null(x.clone()) && null(y.clone()) {
         x //just have to return nil
-    } else if to_bool(atom(x.clone())) && to_bool(atom(y.clone())) {
-       cons(list(car(x.clone()), car(y.clone())),
-            pair(cdr(x.clone()), cdr(y.clone())))
+    } else if !to_bool(atom(x.clone())) && !to_bool(atom(y.clone())) {
+       cons( list(car(x.clone()), car(y.clone())),
+             pair(cdr(x.clone()), cdr(y.clone())) )
     } else {
         panic!("fn pair failed")
     }
 }
 
 fn append(x: Rc<Pair>, y: Rc<Pair>) -> Rc<Pair> {
-    if null(y.clone()) {
+    if null(x.clone()) {
         y //just have to return nul
     } else {
         cons(car(x.clone()), append(cdr(x.clone()), y.clone()))
@@ -191,6 +196,18 @@ fn null(e: Rc<Pair>) -> bool {
     match *e {
         Pair::Atom(ref a) if a.as_slice() == "NIL" => true,
         _                                          => false,
+    }
+}
+
+fn sexpr_is_dotted_pair(e: Rc<Pair>) -> bool {
+    match *e {
+        Pair::Cons(ref h, ref t) => {
+            match (&**h, &**t) {
+                (_, &Pair::Atom(ref a)) if a.as_slice() != "NIL" => true,
+                _ => false,
+            }
+        },
+        _ => false,
     }
 }
 
